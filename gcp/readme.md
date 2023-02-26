@@ -2,7 +2,7 @@
 Google Marketplace is a good candidate for the majority of this exercise because
 
 1. SSh-in-browser requires no custom config
-1. Google cloud marketplace has a ready made stack ELK Ubuntu 2204
+1. Google cloud marketplace has a ready made stack running ELK Ubuntu 2204 (ref appendix)
 
 ## NOTES
 
