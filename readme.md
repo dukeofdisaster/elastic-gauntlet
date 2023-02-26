@@ -15,6 +15,13 @@ While these certainly have their place, they often lack additional in depth oper
 
 TL;DR there is no perfect solution but this repo was created to give an incoming operator additional practical hands-on skill.
 
+## TODO
+1. Cron Scripts
+    1. syslog: take filename and target ip/port for i in file send syslogish message to host
+    1. NDJSON: take filename and target path, generate json log
+    1. XML: take file name and target prefix; generate xml logs ```prefix-<epoch>.xml```
+        1. Requires simulation of time stamp; probably easiest to do in py
+
 ## Operating Systems
 LINUX LINUX LINUX LINUX LINUX. 
 
@@ -87,7 +94,9 @@ Contains various dev tools commands that should be straightforward to execute vi
 
 ## APPENDIX
 1. [Logstash Reference](https://www.elastic.co/guide/en/logstash/8.6/index.html)
-2. [Elasticsearch Guide](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
+1. [Elasticsearch Guide](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
+1. [Filebeat Reference](https://www.elastic.co/guide/en/beats/filebeat/current/index.html)
+1. [Elastic Agent Reference](https://www.elastic.co/guide/en/fleet/current/elastic-agent-installation.html)
 1. [Palo Alto Syslog Samples](https://github.com/jcustenborder/palo-alto-syslog-parser/blob/master/samples.txt)
     - format varies little from version to version
 1. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)

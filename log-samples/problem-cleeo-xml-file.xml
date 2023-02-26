@@ -5,51 +5,51 @@
         <Run date="2023/02/14 12:03:10" TN="1" CN="1" EN="1">
             <Event>
                 <Thread type="CommandLine" action="<send+receive>elliot@evilcorp.lan" />
-                <Mark date="2023/02/14 12:04:10" TN="1" EN="1" />
+                <Mark date="CHANGEME_001" TN="1" EN="1" />
             </Event>
             <Event>
                 <Command text="CONNECT user=023451,*pswd=*dbLOCKShottA**" type="HTTP" line="1" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="1" EN="2" />
+                <Mark date="CHANGEME_002" TN="1" CN="1" EN="2" />
             </Event>
             <Event>
                 <Detail level="0">Connecting to https://dropbox.evilcorp.lan...</Detail>
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="1" EN="3" />
+                <Mark date="CHANGEME_003" TN="1" CN="1" EN="3" />
             </Event>
             <Event>
                 <Request text="POST /servlet/edi/login.key=1,user=02351,pswd=*dbLOCKShottA**" type="HTTP" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="1" EN="4" />
+                <Mark date="CHANGEME_004" TN="1" CN="1" EN="4" />
             </Event>
             <Event>
                 <Response host="200 OK" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="1" EN="5" />
+                <Mark date="CHANGEME_005" TN="1" CN="1" EN="5" />
             </Event>
             <Event>
                 <Result text="Success" command="CONNET user=02351,*pswd=*dbLOCKShottA**" line="1" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="1" EN="6" />
+                <Mark date="CHANGEME_006" TN="1" CN="1" EN="6" />
             </Event>
             <Event>
                 <Command text="PUT -DEL .\receiver=73529,type=X12" type="HTTP" line="2" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="2" EN="7" />
+                <Mark date="CHANGEME_007" TN="1" CN="2" EN="7" />
             </Event>
             <Event>
                 <File source="outbox\test.txt" direction="Local->Host"" number="1 of 1" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="2" EN="0" />
+                <Mark date="CHANGEME_008" TN="1" CN="2" EN="0" />
             </Event>
             <Event>
                 <Request text="POST /servlet/edi/send" type="HTTP" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="2" EN="9" />
+                <Mark date="CHANGEME_009" TN="1" CN="2" EN="9" />
             </Event>
             <Event>
                 <Transfer kBytes="1.497" seconds="0.67" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="2" EN="10" />
+                <Mark date="CHANGEME_010" TN="1" CN="2" EN="10" />
             </Event>
             <Event>
                 <Response host="200 OK" seconds="0.67" />
-                <Mark date="2023/02/14 12:04:12" TN="1" CN="2" EN="11" />
+                <Mark date="CHANGEME_011" TN="1" CN="2" EN="11" />
             </Event>
             <Event>
                 <End/>
-                <Mark date="2023/02/14 12:04:12" TN="1" EN="19" />
+                <Mark date="CHANGEME_012" TN="1" EN="19" />
             </Event>
         </Run>
     </Session>
