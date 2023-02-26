@@ -3,14 +3,19 @@ Google Marketplace is a good candidate for the majority of this exercise because
 
 1. SSh-in-browser requires no custom config
 1. Google cloud marketplace has a ready made stack running ELK Ubuntu 2204 (ref appendix)
+1. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)
+
 
 ## NOTES
-
 - the stack runs fine on an E2 Medium instance 
 - the stack exposes kibana on https://<target>:5601
 - to work through fleet exercises, some additional setup is required. 
 
+
 ## MODIFYING THE STACK FOR FLEET USE
+**NOTE:** Depending on the operator this setup may take more time; if you are using this in something like ACLoudGuru you might run into time crunches if you're trying to setup the stack for fleet use while also trying to work on just ```filebeat => logstash``` objectives in a 4hr cloud sandbox.
+
+
 Fleet depends on security being enabled for elasticsearch which will require some additional setup after the stack is deployed.
 
 Executing the following steps will allow fleet usage to proceed.
@@ -23,7 +28,7 @@ xpack.security.authc.api_key.enabled: true
 ```
 
 2. Restart elasticsearch and ensure it starts fine (check the application log /var/log/elasticsearch)
-- reports about yellow shards are fine
+    1. reports about yellow shards are fine; depending on the replica config a green status could be impossilbe ona 1-node cluster, but you knew that already, right champ?
 
 3. After elasticsearch is restarted, execute the ```elasticsearch-setup-passwords``` utility ; example output below
 
@@ -69,11 +74,12 @@ elasticsearch.password: "UyByTQeC2oiVatdr3FCS"
 ```
 
 6. Restart kibana and ensure it starts up fine (check /var/log/kibana if issues)
-- ```service kibana restart```
+    1. ```service kibana restart```
 
 7. Re auth to Kibana using the elastic credentials; you should have full admin access to kibana now.
+
 8. Update the logstash elasticsearch output with the logstash_system password
-- EXTRA CREDIT: Use the logstash keystore instead of plaintext cred 
+    1. EXTRA CREDIT: Use the logstash keystore instead of plaintext cred 
 ```
 output {
   elasticsearch {
@@ -85,20 +91,21 @@ output {
 ```
 
 9. Once Logstash and Kibana are talking to elasticsearch fine, install ```socat```
-- Elasticsearch in this stack runs on localhost, and if you try to force it to listen on 0.0.0.0 you'll have to add additional
-configuration settings which just add more chaos to the equation. We can use socat as a poor-mans proxy to proxy external traffic to localhost:9200
-- ```apt install socat```
-- create bash script that will proxy this traffic and execute in the background.
+    1. Elasticsearch in this stack runs on localhost, and if you try to force it to listen on 0.0.0.0 you'll have to add additional configuration settings which just add more overheaad to the equation. We can use socat as a poor-mans proxy to proxy external traffic to localhost:9200
+        1. NOTE: the same could be accomplished with nginx but I encountered weird issue when doing it live with fleet agent (could have had off by one, story of my life) so switched to socat and it was fine... so ssocat it is.
+    1. ```apt install socat```
+    1. create bash script that will proxy this traffic and execute in the background.
 ```
 #!/bin/bash
 socat TCP-LISTEN:9222,fork TCP:127.0.0.1:9200 &
-- execute the script and confirm you can hit elastic from an external vm or local with curl http://stack_host:9222
-
-10. Once you have your poor-mans proxy in place, update the fleet settings on top right so the ```elasticsaerch hosts`` setting points to your proxy
-- i.e. ```http://10.128.0.4:9222``` or whatever your vm's IP address is.
 ```
 
-10. Add fleet fleet to the host
+10. execute the script and confirm you can hit elastic from an external vm or local with curl http://stack_host:9222
+
+11. Once you have your poor-mans proxy in place, update the fleet settings on top right so the ```elasticsaerch hosts`` setting points to your proxy
+- i.e. ```http://10.128.0.4:9222``` or whatever your vm's IP address is.
+
+12. Add fleet fleet to the host
     1. Download the elastic agent version matching the stack to the target host from [here](https://www.elastic.co/downloads/past-releases/elastic-agent-7-17-8)
     2. Verify the SHA512 of the download to ensure the tarball wasn't butchered in transit (rare, but I've seen it happen at least once, and it was painful to figure out because install was partially successful... lesson learned). 
         1. EXTRA CREDIT: screnshot of of the checksum being verified
@@ -126,9 +133,11 @@ Successfully enrolled the Elastic Agent.
 Elastic Agent has been successfully installed.
 
 ```
+
+13. At this point elastic agents should be able to be enrolled with the fleet server so relevant objectives can be worked on.
     
 
 
 ## APPENDIX
-2. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)
-- deployes 7.17.X version of the stack, ready made
+1. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)
+    - deploys 7.17.X version of the stack, ready made
