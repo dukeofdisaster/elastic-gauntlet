@@ -68,18 +68,27 @@ Contains various dev tools commands that should be straightforward to execute vi
 1. Deploy a filebeat agent to collect the following logs and ship them directly to elasticsearch. Use ingest pipelines at will. Index name filebeat-test-blahblahblah
     1. Did any problems arise? 
     1. How can you resolve these problems? 
+
 1. Make an elastic agent fleet policy to consume the following logs and ship them directly to elasticsearch. Use ingest pipelines at will. Data stream or index name elastic-agent-test-blahblahblah
     1. Did any problems arise?
-    2. How can you resolve these problems?
+    1. How can you resolve these problems?
+
 1. Update your filebeat config to ship to a logstash node w/out tls. It should output to an index named logstash-test-blah-blah-blah
     1. Did any problems arise? 
-    2. How can you address these problems?
-2. Update your fleet policy to ship to a logstash node. It should output to an index or data stream with name ea-logstash-test-blah-blah-blah
-    1. NOTE: Logstash output from fleet is only available on 8.0 so disregard this
+    1. How can you address these problems?
+
+1. Update your fleet policy to ship to a logstash node. It should output to an index or data stream with name ea-logstash-test-blah-blah-blah
+    1. NOTE: Logstash output from fleet is only available on ```8.X``` so disregard this for platforms in which the stack is running ```7.X```
+
+1. Reindex the data in <some_index_one> to reindex-test-0001
+    - the ```wait_for_completion=true``` query parameter to get the task ID of your reindex op
+    - use the ```GET _tasks``` api to check the status 
 
 
 ## APPENDIX
+1. [Logstash Reference](https://www.elastic.co/guide/en/logstash/8.6/index.html)
+2. [Elasticsearch Guide](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
 1. [Palo Alto Syslog Samples](https://github.com/jcustenborder/palo-alto-syslog-parser/blob/master/samples.txt)
-- note format varies little from soruce to src
-2. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)
-- deployes 7.17.X version of the stack, ready made
+    - format varies little from version to version
+1. [GCP: Elk Ubuntu 2204 powered by Classmethod](https://console.cloud.google.com/marketplace/product/classmethod-can-public/cmca-elk-ubuntu-2204)
+    - deployes 7.17.X version of the stack, ready made
