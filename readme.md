@@ -11,16 +11,12 @@ Two of the most common answers include...
 2. ```TRAINING FROM A THIRD PARTY PROVIDER```
 
 
-While these certainly have their place, they often lack additional in depth operational know-how / savvy or they are slightly out of touch. 
-
-TL;DR there is no perfect solution but this repo was created to give an incoming operator additional practical hands-on skill.
+While these certainly have their place, they often lack additional in depth operational know-how / savvy that can only be obtained from the depths of log despair.
 
 ## TODO
 1. Cron Scripts
     1. syslog: take filename and target ip/port for i in file send syslogish message to host
     1. NDJSON: take filename and target path, generate json log
-    1. XML: take file name and target prefix; generate xml logs ```prefix-<epoch>.xml```
-        1. Requires simulation of time stamp; probably easiest to do in py
 
 ## Operating Systems
 LINUX LINUX LINUX LINUX LINUX. 
@@ -37,9 +33,13 @@ Contains various log samples that can be used for practice. Where possible these
 Problem logs have naming convention ```problem-<problem_description>.log```
 
 ## /src
-Contains various scripts that can be used. 
+Contains various scripts that can be used for simulating ```live ``` log setup in the env
 
 1. gen-palo-batch.sh
+1. gen-cleoy.py
+    1. RUN: ```./gen-cleo.py log-samples/problem-cleeo-xml-file.xml hello.xml```
+    1. CRON:   ```*/1 * * * * /opt/elastic-gauntlet/src/gen-cleo.py log-samples/problem-cleeo-xml-file.xml /var/log/somepath/`date +%s`.xml```
+
 
 ## /auto-deploy
 Contains cloud deployment templates that can have variables modified to meet a given need. For example of OPERATOR_SOURCE_IP white listed for inbound traffic.

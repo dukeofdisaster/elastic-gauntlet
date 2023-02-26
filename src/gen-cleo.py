@@ -14,7 +14,6 @@ def main():
         for i in range(1,13):
             now_delta = now - timedelta(seconds=i)
             now_delta_str = now_delta.strftime("%Y/%m/%d %H:%M:%S")
-            print(f'DELTA STR: {now_delta_str}')
             if i > 9:
                 change_str=f'CHANGEME_0{i}'
                 source = source.replace(change_str, now_delta_str)
