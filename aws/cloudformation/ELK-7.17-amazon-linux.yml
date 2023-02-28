@@ -1,16 +1,6 @@
 # USAGE
 #   - Setup some EC2 Instances for practice with ELK stack
-#
-# NOTE:
-#   - Creation order matters: had issues with unresolvable dependencies
-#   Create Queue, then Policy, then Bucket by using DependdsOn attributes
-# TODO:
-#	- add a keypair here so we don't have to create one manually each time: done: add pubkey to userdata
-#	- add an ansible playbook that ensures everything is running as expected
-#	- add an ansible playbook that will generate logs given a keyword
-#	- add an ansible playbook that will pull the line count metrics.
-#	- add a vpc config ensuring source IP is whitelist
-#   - whitelist dev public ip
+#   - This template was reused from a related project that used sqs+s3 patterns for log ingestion. Left this in place so users can practice 
 Resources:
   # A bucket for the logstash producer to send logs to
   S3STORAGE001:
