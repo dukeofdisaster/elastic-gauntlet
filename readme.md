@@ -1,4 +1,4 @@
-# ELASTIC GAUNTLET
+# ELASTIC GAUNTLET - UNDER CONSTRUCTION
 This repo was birthed out of $DAYJOB. The driving question I had was this. 
 
 ```
