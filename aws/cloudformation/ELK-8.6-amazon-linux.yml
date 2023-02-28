@@ -1,0 +1,236 @@
+# USAGE
+#	- The name of the game here is to check the behavior of multiple filebeat consumers 
+#	reading messages from an s3 bucket integrated with SQS
+#	- Expected behavior: 
+#		- all messages delivered at-least-once
+#		- no duplicates
+#	- How to measure: 
+#		- ship 10K logs.
+#		- start both filebeat consumers
+#		- for i in 10K do grep DUDEMESSAGE$i $FILEBEAT_OUTPUT_FILE
+#
+# NOTE:
+#   - Creation order matters: had issues with unresolvable dependencies
+#   Create Queue, then Policy, then Bucket by using DependdsOn attributes
+# TODO:
+#	- add a keypair here so we don't have to create one manually each time: done: add pubkey to userdata
+#	- add an ansible playbook that ensures everything is running as expected
+#	- add an ansible playbook that will generate logs given a keyword
+#	- add an ansible playbook that will pull the line count metrics.
+#	- add a vpc config ensuring source IP is whitelist
+#   - whitelist dev public ip
+Resources:
+  # A bucket for the logstash producer to send logs to
+  S3STORAGE001:
+    Type: 'AWS::S3::Bucket'
+    DependsOn:
+      #- SQSQUEUE001
+      - QUEUEPOLICY001
+    Properties:
+      BucketName: 'logstash-producers'
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            # ignore filter
+            #Queue: 'arn:aws:sqs:us-east1:*somearn here'
+            Queue: !GetAtt SQSQUEUE001.Arn
+  SQSQUEUE001:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      # ContentBasedDeduplication is not valid here; CF threw errors
+      #QueueName: 'logstash-logs-queue-001' 
+      QueueName: 'logstash-logs' 
+      # testing showed this to lead to high fidelity of Rx'd messages
+      # when used in conjunction with 10 Rx delay
+      DelaySeconds: 10
+      MessageRetentionPeriod: 345600
+      ReceiveMessageWaitTimeSeconds: 10
+      # default is 30 seconds
+      VisibilityTimeout: 60
+  QUEUEPOLICY001:
+    Type: 'AWS::SQS::QueuePolicy'
+    DependsOn:
+      - SQSQUEUE001
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - SQS:SendMessage
+            Resource: "arn:aws:sqs:us-east-1:*:logstash-logs"
+            Condition:
+              ArnLike:
+                aws:SourceArn: "arn:aws:s3:::logstash-producers"
+      Queues:
+        - !Ref SQSQUEUE001
+  EC2PRODUCER001:
+    # without a depends clause, if we start logstash w/out the s3 bucket, it creates the rootbucket, which creates issues.
+    Type: 'AWS::EC2::Instance'
+    DependsOn:
+      - S3STORAGE001
+    Properties:
+      InstanceType: 't3.medium'
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref INSTANCEPROFILE001
+      # Install logstash with conf to suckup /var/log messages
+      # logstash-s3-producer-setup.sh
+      UserData: IyEvYmluL2Jhc2gKIyBWRVJTSU9OOiAyMDIxMTExMSAtIHVzZSBzZWQgdG8gYnVtcCAvZXRjL2xvZ3N0YXNoL2p2bS5vcHRpb25zIGhlYXAgdG8gMmcKIyBVU0FHRToKIyAgIC0gU2V0dXAgRUxLIHN0YWNrIDcuWCBsYXRlc3QgdmlhIHl1bSByZXBvCiMjIyMgUFJFUCBUSEUgWVVNIFJFUE9SIEZPUiA3LlggCnN1ZG8geXVtIC15IHVwZGF0ZSAmJiBzdWRvIHl1bSAteSB1cGdyYWRlCnN1ZG8gcnBtIC0taW1wb3J0IGh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vR1BHLUtFWS1lbGFzdGljc2VhcmNoCmVjaG8gIltsb2dzdGFzaC04LnhdIiA+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ25hbWU9RWxhc3RpYyByZXBvc2l0b3J5IGZvciA4LnggcGFja2FnZXMnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ2Jhc2V1cmw9aHR0cHM6Ly9hcnRpZmFjdHMuZWxhc3RpYy5jby9wYWNrYWdlcy84LngveXVtJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdncGdjaGVjaz0xJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdncGdrZXk9aHR0cHM6Ly9hcnRpZmFjdHMuZWxhc3RpYy5jby9HUEctS0VZLWVsYXN0aWNzZWFyY2gnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ2VuYWJsZWQ9MScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnYXV0b3JlZnJlc2g9MScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAndHlwZT1ycG0tbWQnID4+IC90bXAvZWxhc3RpYy5yZXBvCgoKIyMjIyBMT0dTVEFTSCBMT0dTIFRPIFMzIC0gZ29vZCBmb3IgdGVzdGluZyBmaWxlYmVhdC9mbGVldCBTMytTUVMgaW5wdXQgCmVjaG8gJ2FXNXdkWFFnZXdvSkl5QnpkV05ySUhWd0lHRnNiQ0IyWVhJZ2JHOW5JRzFsYzNOaFoyVnpDZ2xtYVd4bElIc0tDUWx3WVhSb0lEMCtJRnNLQ1FrSklpOTJZWEl2Ykc5bkx5b2lMQW9KQ1FraUwzWmhjaTlzYjJjdktpOHFMbXh2WnlJS0NRbGRDZ2tKZEdGbmN5QTlQaUFpYkc5bmMzUmhjMmd0Wm1sc1pTMXBibkIxZENJS0NYMEtmUXB2ZFhSd2RYUWdld29KY3pNZ2V3b0pDV052WkdWaklEMCtJR3B6YjI1ZmJHbHVaWE1LQ1FseVpXZHBiMjRnUFQ0Z0luVnpMV1ZoYzNRdE1TSUtDUWxpZFdOclpYUWdQVDRnSW14dlozTjBZWE5vTFhCeWIyUjFZMlZ5Y3lJS0NRbHdjbVZtYVhnZ1BUNGdJblpoY214dlp5OGxleXRaV1ZsWmZTOGxleXROVFgwdkpYc3JaR1I5THlJS0NRa2pjbTkwWVhScGIyNWZjM1J5WVhSbFoza2dQVDRnSW5ScGJXVWlDZ2tKYzJsNlpWOW1hV3hsSUQwK0lESXdORGdLSUNBZ0lDQWdJQ0FnSUNBZ0lDQWdJR1Z1WTI5a2FXNW5JRDArSUNKbmVtbHdJZ29KZlFwOUNnPT0nID4gL3RtcC9sb2dzdGFzaC5jb25mLmI2NAoKIyMjIyBPUFRJT05BTDogSWYgYXJpYnRyYXJ5IG91dGJvdW5kIHNzaCBpcyBhbGxvd2VkIG91dGJvdW5kLCBhZGQgYSBwdWJrZXkgb2YgeW91ciBjaG9zZSB0byB0aGUgaG9zdC4uLiBmb3JlZ29lcyBzZXR1cCBpbiBBV1MgCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsdm9ycC5jb20nID4+IC9ob21lL2VjMi11c2VyLy5zc2gvYXV0aG9yaXplZF9rZXlzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsdm9ycC5jb20nID4+IC9yb290Ly5zc2gvYXV0aG9yaXplZF9rZXlzCgoKIyBnZW5sb2dzLnNoIHNjcmlwdCBmb3IgZ2VuZXJhdGluZyA1MDBLIGxpbmUgbG9nIGZpbGVzIGluIC92YXIvbG9nIGhhdCBjYW4gYmUgY29uc3VtZWQgYnkgdGhlIGxvZ3N0YXNoID0+IHMzIGNvbmYgYWJvdmUKZWNobyAnSXlFdlltbHVMMkpoYzJnS0l5QlZVMEZIUlRvZ1oyVnVaWEpoZENBMU1EQkxJR3h2WjNNZ1ltRnpaV1FnYjI0Z2EyVjVkMjl5WkFwTFJWbFhUMUpFUFNReENtWnZjaUJwSUdsdUlIc3hMaTQxTURBd01EQjlJRHNnWkc4Z1pXTm9ieUFrUzBWWlYwOVNSQ1JwSUQ0K0lDOTJZWEl2Ykc5bkx5UkxSVmxYVDFKRUlEc2daRzl1WlFvPScgPiAvdG1wL2dlbmxvZ3Muc2guYjY0CmJhc2U2NCAtZCA8IC90bXAvZ2VubG9ncy5zaC5iNjQgPiAvdG1wL2dlbmxvZ3Muc2gKc3VkbyBjcCAvdG1wL2VsYXN0aWMucmVwbyAvZXRjL3l1bS5yZXBvcy5kLwpzdWRvIHl1bSB1cGRhdGUgIC15CnN1ZG8geXVtIC15IGluc3RhbGwgbG9nc3Rhc2gganEgZWxhc3RpY3NlYXJjaCBraWJhbmEKYmFzZTY0IC1kIDwgL3RtcC9sb2dzdGFzaC5jb25mLmI2NCA+IC90bXAvbG9nc3Rhc2guY29uZgpzdWRvIGNwIC90bXAvbG9nc3Rhc2guY29uZiAvZXRjL2xvZ3N0YXNoL2NvbmYuZC8KCiMjIyMgQlVNUCBUSEUgTE9HU1RBU0ggSlZNIFRPIFVTRSAyRyBIRUFQIGlmIHlvdSB1c2UgYW55dGhpbmcgYWJvdmUgdDMgbWVkaXVtCnN1ZG8gc2VkIC1pICdzLy1YbXMxZy8tWG1zMmcvZycgL2V0Yy9sb2dzdGFzaC9qdm0ub3B0aW9ucyAmJiBzZWQgLWkgJ3MvLVhteDFnLy1YbXgyZy9nJyAvZXRjL2xvZ3N0YXNoL2p2bS5vcHRpb25zCnN1ZG8gY2htb2QgbytyIC92YXIvbG9nLyoKCgojIyMjIHVwZGF0ZSB0aGUgZWxhc3RpY3NlYXJjaCBjb25maWcgdG8gZW5hYmxlIHNlY3VyaXR5IGFuZCBnZW5lcmF0ZSBwYXNzd29yZHMgCiNlY2hvICd4cGFjay5zZWN1cml0eS5lbmFibGVkOiB0cnVlJyA+PiAvZXRjL2VsYXN0aWNzZWFyY2gvZWxhc3RpY3NlYXJjaC55bWwKI2VjaG8gJ3hwYWNrLnNlY3VyaXR5LmF1dGhjLmFwaV9rZXkuZW5hYmxlZDogdHJ1ZScgPj4gL2V0Yy9lbGFzdGljc2VhcmNoL2VsYXN0aWNzZWFyY2gueW1sCgojIyMjIHN0YXJ0IGVsYXN0aWNzZWFyY2ggc28gd2UgY2FuIGJvb3RzdHJhcCBwYXNzd29yZHMgClBBU1NfRklMRT0vdG1wL3Bhc3N3b3Jkcy50eHQKUEFTU19FTEFTVElDPS90bXAvZWxhc3RpYy5wYXNzd29yZApQQVNTX0tJQkFOQV9TWVNURU09L3RtcC9raWJhbmFfc3lzdGVtLnBhc3N3b3JkCnNlcnZpY2UgZWxhc3RpY3NlYXJjaCBzdGFydCAKc3VkbyAvdXNyL3NoYXJlL2VsYXN0aWNzZWFyY2gvYmluL2VsYXN0aWNzZWFyY2gtcmVzZXQtcGFzc3dvcmQgLXUgZWxhc3RpYyAtYiA+IC90bXAvZWxhc3RpYy5wYXNzd29yZApzdWRvIC91c3Ivc2hhcmUvZWxhc3RpY3NlYXJjaC9iaW4vZWxhc3RpY3NlYXJjaC1yZXNldC1wYXNzd29yZCAtdSBraWJhbmFfc3lzdGVtIC1iID4gL3RtcC9raWJhbmFfc3lzdGVtLnBhc3N3b3JkCktJQkFOQV9TWVNfUEFTUz1gZ3JlcCAnTmV3IHZhbHVlJyAvdG1wL2tpYmFuYV9zeXN0ZW0ucGFzc3dvcmQgfGN1dCAtZCc6JyAtZiAyLSAgfCB0ciAtZCAnICdgCmlmIFtbICIkS0lCQU5BX1NZU19QQVNTIiA9PSAiIiBdXTsgdGhlbgogICAgZWNobyBGQUlMIFRPIFNFVCBLSUJBTkEgU1lTVEVNIFBBU1NXT1JECmVsc2UKICAgIGVjaG8gImVsYXN0aWNzZWFyY2gudXNlcm5hbWU6IGtpYmFuYV9zeXN0ZW0iID4+IC9ldGMva2liYW5hL2tpYmFuYS55bWwKICAgIGVjaG8gImVsYXN0aWNzZWFyY2gucGFzc3dvcmQ6ICRLSUJBTkFfU1lTX1BBU1MiID4+IC9ldGMva2liYW5hL2tpYmFuYS55bWwKICAgIGVjaG8gInNlcnZlci5ob3N0OiAwLjAuMC4wIiA+PiAvZXRjL2tpYmFuYS9raWJhbmEueW1sCiAgICBlY2hvICJlbGFzdGljc2VhcmNoLmhvc3RzOiBbXCJodHRwczovL2xvY2FsaG9zdDo5MjAwXCJdIiA+PiAvZXRjL2tpYmFuYS9raWJhbmEueW1sCiAgICBlY2hvICJlbGFzdGljc2VhcmNoLnNzbC52ZXJpZmljYXRpb25Nb2RlOiBub25lIiA+PiAvZXRjL2tpYmFuYS9raWJhbmEueW1sCmZpCnN1ZG8gc2VydmljZSBraWJhbmEgcmVzdGFydCAK
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: 0
+      #KeyName: 'devkeypair'
+      # tagging with Name automatically names the ec2 instance.
+      Tags:
+        - Key: 'Name'
+          Value: '20210501-logstash-producer'
+  #### FILEBEAT CONSUMER
+  EC2CONSUMER001:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: 't3.medium'
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref INSTANCEPROFILE002
+      # filebeat-consumer-setup.sh
+      UserData: IyEvYmluL2Jhc2gKIyAgIFVTQUdFOgojICAgICAgIC0gU2V0dXBzIGEgZmlsZWJlYXQgY29uc3VtZXIgb24gZWMyIHdpdGggRWxhc3RpYyA3LlggcmVwbyAKIyAgICAgICAtIFRoaXMgdXNlcmRhdGEgaXMgdXNlZCBpbiBhIGNsb3VkZm9ybWF0aW9uIHRlbXBsYXRlIHRoYXQgaGFzIHJvbGVzIGdyYW50aW5nIHRoZSBpbnN0YW5jZSByZWFkIGFjY2VzcyB0byBzMwojICAgICAgICAgdG8gY29uc3VtZSBsb2dzIGdlbmVyYXRlZCB0aGUgdGhlIGxvZ3N0YXNoIHByb2R1Y2VyLiAKIwojIyMjIFVQREFURSBZVU0gQU5EIFNFVFVQIFRIRSBFTEFTVElDIFJFUE8Kc3VkbyB5dW0gLXkgdXBkYXRlICYmIHN1ZG8geXVtIC15IHVwZ3JhZGUKc3VkbyBycG0gLS1pbXBvcnQgaHR0cHM6Ly9hcnRpZmFjdHMuZWxhc3RpYy5jby9HUEctS0VZLWVsYXN0aWNzZWFyY2gKZWNobyAiW2VsYXN0aWMtOC54XSIgPiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICduYW1lPUVsYXN0aWMgcmVwb3NpdG9yeSBmb3IgOC54IHBhY2thZ2VzJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdiYXNldXJsPWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vcGFja2FnZXMvOC54L3l1bScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3BnY2hlY2s9MScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3Bna2V5PWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vR1BHLUtFWS1lbGFzdGljc2VhcmNoJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdlbmFibGVkPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ2F1dG9yZWZyZXNoPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ3R5cGU9cnBtLW1kJyA+PiAvdG1wL2VsYXN0aWMucmVwbwpzdWRvIGNwIC90bXAvZWxhc3RpYy5yZXBvIC9ldGMveXVtLnJlcG9zLmQvCgojIyMjIHl1bSB1cGRhdGUgYWdhaW4gbm93IHRoYXQgd2UgYWRkZWQgZWxhc3RpYyByZXBvCnN1ZG8geXVtIC15IHVwZGF0ZSAKc3VkbyB5dW0gLXkgaW5zdGFsbCBmaWxlYmVhdCBqcQplY2hvICdabWxzWldKbFlYUXVhVzV3ZFhSek9nb3RJSFI1Y0dVNklHRjNjeTF6TXdvZ0lHVnVZV0pzWldRNklIUnlkV1VLSUNCeGRXVjFaVjkxY213NklHaDBkSEJ6T2k4dmMzRnpMblZ6TFdWaGMzUXRNUzVoYldGNmIyNWhkM011WTI5dEx6eHpiMjFsWVdOamIzVnVkR2xrUGk5c2IyZHpkR0Z6YUMxc2IyZHpDaUFnWlhod1lXNWtYMlYyWlc1MGJHbHpkRjltY205dFgyWnBaV3hrT2lCU1pXTnZjbVJ6Q2dwc2IyZG5hVzVuTG14bGRtVnNPaUJwYm1adkNteHZaMmRwYm1jdWRHOWZabWxzWlhNNklIUnlkV1VLYkc5bloybHVaeTVtYVd4bGN6b0tJQ0J3WVhSb09pQXZkbUZ5TDJ4dlp5OW1hV3hsWW1WaGRBb2dJRzVoYldVNklHWnBiR1ZpWldGMENpQWdhMlZsY0dacGJHVnpPaUEzQ2lBZ2NHVnliV2x6YzJsdmJuTTZJREEyTkRRS2IzVjBjSFYwTG1acGJHVTZDaUFnY0dGMGFEb2dJaTkwYlhBdlptbHNaV0psWVhRaUNpQWdabWxzWlc1aGJXVTZJQ0ptYVd4bFltVmhkQzF2ZFhSd2RYUXViRzluSWdvZ0lDTWdjbTkwWVhSbElHVjJaWEo1SURFd1J3b2dJSEp2ZEdGMFpWOWxkbVZ5ZVY5cllqb2dNVEF3TURBd01EQUtJQ0J1ZFcxaVpYSmZiMlpmWm1sc1pYTTZJRE1LSUNCd1pYSnRhWE56YVc5dWN6b2dNRFkwTkFvPScgPiAvdG1wL2ZpbGViZWF0LnltbC5iNjQKYmFzZTY0IC1kIDwgL3RtcC9maWxlYmVhdC55bWwuYjY0ID4gL3RtcC9maWxlYmVhdC55bWwKY3VybCAtcyBodHRwOi8vMTY5LjI1NC4xNjkuMjU0L2xhdGVzdC9keW5hbWljL2luc3RhbmNlLWlkZW50aXR5L2RvY3VtZW50IHwganEgLXIgLmFjY291bnRJZCB8IHhhcmdzIC1pIHNlZCAtaSAicy88c29tZWFjY291bnRpZD4ve30vZyIgL3RtcC9maWxlYmVhdC55bWwKCgojIyMjIE9QVElPTkFMOiBhZGQgYW4gc3NoIGtleSBpZiB0aGUgbmV0IHlvdSdyZSBvbiBhbGxvd3MgYXJiaXRyYXJ5IHNzaCBvdXRib3VuZDsgc2tpcHMgc2V0dXAgaW4gYXdzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9ob21lL2VjMi11c2VyLy5zc2gvYXV0aG9yaXplZF9rZXlzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9yb290Ly5zc2gvYXV0aG9yaXplZF9rZXlzCgoKIyMjIyB3YXRjaGNvdW50LnNoIHNjcmlwdCBmb3IgZ3JlcHBpbmcgZmlsZXMKZWNobyAnSXlFdlltbHVMMkpoYzJnS0l5QlZVMEZIUlRvZ1oybDJaVzRnWVNCclpYbDNiM0prTENCbmNtVndJSFJoY21kbGRDQndZWFIwWlhKdUlHWnZjaUJyWlhsM2IzSmtDa3RGV1ZkUFVrUTlKREVLZDJocGJHVWdkSEoxWlNBN0lHUnZJR2R5WlhBZ0pFdEZXVmRQVWtRZ0wzUnRjQzltYVd4bFltVmhkQzhxSUh3Z2QyTWdMV3dnSmlZZ2MyeGxaWEFnTVNBN0lHUnZibVVLJyA+IC90bXAvd2F0Y2hjb3VudC5zaC5iNjQKYmFzZTY0IC1kIDwgL3RtcC93YXRjaGNvdW50LnNoLmI2NCA+IC90bXAvd2F0Y2hjb3VudC5zaApzdWRvIGNwIC90bXAvZmlsZWJlYXQueW1sIC9ldGMvZmlsZWJlYXQvZmlsZWJlYXQueW1sCnN1ZG8gbWtkaXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNob3duIHJvb3Q6ZWMyLXVzZXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNobW9kIG8rcnggL3RtcC9maWxlYmVhdAo=
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: 0
+      #KeyName: 'devkeypair'
+      # tagging with Name automatically names the ec2 instance.
+      Tags:
+        - Key: 'Name'
+          Value: '20210503-filebeat-consumer1'
+  EC2CONSUMER002:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: 't3.medium'
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref INSTANCEPROFILE002
+      UserData: IyEvYmluL2Jhc2gKIyAgIFVTQUdFOgojICAgICAgIC0gU2V0dXBzIGEgZmlsZWJlYXQgY29uc3VtZXIgb24gZWMyIHdpdGggRWxhc3RpYyA3LlggcmVwbyAKIyAgICAgICAtIFRoaXMgdXNlcmRhdGEgaXMgdXNlZCBpbiBhIGNsb3VkZm9ybWF0aW9uIHRlbXBsYXRlIHRoYXQgaGFzIHJvbGVzIGdyYW50aW5nIHRoZSBpbnN0YW5jZSByZWFkIGFjY2VzcyB0byBzMwojICAgICAgICAgdG8gY29uc3VtZSBsb2dzIGdlbmVyYXRlZCB0aGUgdGhlIGxvZ3N0YXNoIHByb2R1Y2VyLiAKIwojIyMjIFVQREFURSBZVU0gQU5EIFNFVFVQIFRIRSBFTEFTVElDIFJFUE8Kc3VkbyB5dW0gLXkgdXBkYXRlICYmIHN1ZG8geXVtIC15IHVwZ3JhZGUKc3VkbyBycG0gLS1pbXBvcnQgaHR0cHM6Ly9hcnRpZmFjdHMuZWxhc3RpYy5jby9HUEctS0VZLWVsYXN0aWNzZWFyY2gKZWNobyAiW2VsYXN0aWMtOC54XSIgPiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICduYW1lPUVsYXN0aWMgcmVwb3NpdG9yeSBmb3IgOC54IHBhY2thZ2VzJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdiYXNldXJsPWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vcGFja2FnZXMvOC54L3l1bScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3BnY2hlY2s9MScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3Bna2V5PWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vR1BHLUtFWS1lbGFzdGljc2VhcmNoJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdlbmFibGVkPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ2F1dG9yZWZyZXNoPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ3R5cGU9cnBtLW1kJyA+PiAvdG1wL2VsYXN0aWMucmVwbwpzdWRvIGNwIC90bXAvZWxhc3RpYy5yZXBvIC9ldGMveXVtLnJlcG9zLmQvCgojIyMjIHl1bSB1cGRhdGUgYWdhaW4gbm93IHRoYXQgd2UgYWRkZWQgZWxhc3RpYyByZXBvCnN1ZG8geXVtIC15IHVwZGF0ZSAKc3VkbyB5dW0gLXkgaW5zdGFsbCBmaWxlYmVhdCBqcQplY2hvICdabWxzWldKbFlYUXVhVzV3ZFhSek9nb3RJSFI1Y0dVNklHRjNjeTF6TXdvZ0lHVnVZV0pzWldRNklIUnlkV1VLSUNCeGRXVjFaVjkxY213NklHaDBkSEJ6T2k4dmMzRnpMblZ6TFdWaGMzUXRNUzVoYldGNmIyNWhkM011WTI5dEx6eHpiMjFsWVdOamIzVnVkR2xrUGk5c2IyZHpkR0Z6YUMxc2IyZHpDaUFnWlhod1lXNWtYMlYyWlc1MGJHbHpkRjltY205dFgyWnBaV3hrT2lCU1pXTnZjbVJ6Q2dwc2IyZG5hVzVuTG14bGRtVnNPaUJwYm1adkNteHZaMmRwYm1jdWRHOWZabWxzWlhNNklIUnlkV1VLYkc5bloybHVaeTVtYVd4bGN6b0tJQ0J3WVhSb09pQXZkbUZ5TDJ4dlp5OW1hV3hsWW1WaGRBb2dJRzVoYldVNklHWnBiR1ZpWldGMENpQWdhMlZsY0dacGJHVnpPaUEzQ2lBZ2NHVnliV2x6YzJsdmJuTTZJREEyTkRRS2IzVjBjSFYwTG1acGJHVTZDaUFnY0dGMGFEb2dJaTkwYlhBdlptbHNaV0psWVhRaUNpQWdabWxzWlc1aGJXVTZJQ0ptYVd4bFltVmhkQzF2ZFhSd2RYUXViRzluSWdvZ0lDTWdjbTkwWVhSbElHVjJaWEo1SURFd1J3b2dJSEp2ZEdGMFpWOWxkbVZ5ZVY5cllqb2dNVEF3TURBd01EQUtJQ0J1ZFcxaVpYSmZiMlpmWm1sc1pYTTZJRE1LSUNCd1pYSnRhWE56YVc5dWN6b2dNRFkwTkFvPScgPiAvdG1wL2ZpbGViZWF0LnltbC5iNjQKYmFzZTY0IC1kIDwgL3RtcC9maWxlYmVhdC55bWwuYjY0ID4gL3RtcC9maWxlYmVhdC55bWwKY3VybCAtcyBodHRwOi8vMTY5LjI1NC4xNjkuMjU0L2xhdGVzdC9keW5hbWljL2luc3RhbmNlLWlkZW50aXR5L2RvY3VtZW50IHwganEgLXIgLmFjY291bnRJZCB8IHhhcmdzIC1pIHNlZCAtaSAicy88c29tZWFjY291bnRpZD4ve30vZyIgL3RtcC9maWxlYmVhdC55bWwKCgojIyMjIE9QVElPTkFMOiBhZGQgYW4gc3NoIGtleSBpZiB0aGUgbmV0IHlvdSdyZSBvbiBhbGxvd3MgYXJiaXRyYXJ5IHNzaCBvdXRib3VuZDsgc2tpcHMgc2V0dXAgaW4gYXdzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9ob21lL2VjMi11c2VyLy5zc2gvYXV0aG9yaXplZF9rZXlzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9yb290Ly5zc2gvYXV0aG9yaXplZF9rZXlzCgoKIyMjIyB3YXRjaGNvdW50LnNoIHNjcmlwdCBmb3IgZ3JlcHBpbmcgZmlsZXMKZWNobyAnSXlFdlltbHVMMkpoYzJnS0l5QlZVMEZIUlRvZ1oybDJaVzRnWVNCclpYbDNiM0prTENCbmNtVndJSFJoY21kbGRDQndZWFIwWlhKdUlHWnZjaUJyWlhsM2IzSmtDa3RGV1ZkUFVrUTlKREVLZDJocGJHVWdkSEoxWlNBN0lHUnZJR2R5WlhBZ0pFdEZXVmRQVWtRZ0wzUnRjQzltYVd4bFltVmhkQzhxSUh3Z2QyTWdMV3dnSmlZZ2MyeGxaWEFnTVNBN0lHUnZibVVLJyA+IC90bXAvd2F0Y2hjb3VudC5zaC5iNjQKYmFzZTY0IC1kIDwgL3RtcC93YXRjaGNvdW50LnNoLmI2NCA+IC90bXAvd2F0Y2hjb3VudC5zaApzdWRvIGNwIC90bXAvZmlsZWJlYXQueW1sIC9ldGMvZmlsZWJlYXQvZmlsZWJlYXQueW1sCnN1ZG8gbWtkaXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNob3duIHJvb3Q6ZWMyLXVzZXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNobW9kIG8rcnggL3RtcC9maWxlYmVhdAo=
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: 0
+      #KeyName: 'devkeypair'
+      # tagging with Name automatically names the ec2 instance.
+      Tags:
+        - Key: 'Name'
+          Value: '20210503-filebeat-consumer2'
+  EC2CONSUMER003:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: 't3.medium'
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref INSTANCEPROFILE002
+      UserData: IyEvYmluL2Jhc2gKIyAgIFVTQUdFOgojICAgICAgIC0gU2V0dXBzIGEgZmlsZWJlYXQgY29uc3VtZXIgb24gZWMyIHdpdGggRWxhc3RpYyA3LlggcmVwbyAKIyAgICAgICAtIFRoaXMgdXNlcmRhdGEgaXMgdXNlZCBpbiBhIGNsb3VkZm9ybWF0aW9uIHRlbXBsYXRlIHRoYXQgaGFzIHJvbGVzIGdyYW50aW5nIHRoZSBpbnN0YW5jZSByZWFkIGFjY2VzcyB0byBzMwojICAgICAgICAgdG8gY29uc3VtZSBsb2dzIGdlbmVyYXRlZCB0aGUgdGhlIGxvZ3N0YXNoIHByb2R1Y2VyLiAKIwojIyMjIFVQREFURSBZVU0gQU5EIFNFVFVQIFRIRSBFTEFTVElDIFJFUE8Kc3VkbyB5dW0gLXkgdXBkYXRlICYmIHN1ZG8geXVtIC15IHVwZ3JhZGUKc3VkbyBycG0gLS1pbXBvcnQgaHR0cHM6Ly9hcnRpZmFjdHMuZWxhc3RpYy5jby9HUEctS0VZLWVsYXN0aWNzZWFyY2gKZWNobyAiW2VsYXN0aWMtOC54XSIgPiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICduYW1lPUVsYXN0aWMgcmVwb3NpdG9yeSBmb3IgOC54IHBhY2thZ2VzJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdiYXNldXJsPWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vcGFja2FnZXMvOC54L3l1bScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3BnY2hlY2s9MScgPj4gL3RtcC9lbGFzdGljLnJlcG8KZWNobyAnZ3Bna2V5PWh0dHBzOi8vYXJ0aWZhY3RzLmVsYXN0aWMuY28vR1BHLUtFWS1lbGFzdGljc2VhcmNoJyA+PiAvdG1wL2VsYXN0aWMucmVwbwplY2hvICdlbmFibGVkPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ2F1dG9yZWZyZXNoPTEnID4+IC90bXAvZWxhc3RpYy5yZXBvCmVjaG8gJ3R5cGU9cnBtLW1kJyA+PiAvdG1wL2VsYXN0aWMucmVwbwpzdWRvIGNwIC90bXAvZWxhc3RpYy5yZXBvIC9ldGMveXVtLnJlcG9zLmQvCgojIyMjIHl1bSB1cGRhdGUgYWdhaW4gbm93IHRoYXQgd2UgYWRkZWQgZWxhc3RpYyByZXBvCnN1ZG8geXVtIC15IHVwZGF0ZSAKc3VkbyB5dW0gLXkgaW5zdGFsbCBmaWxlYmVhdCBqcQplY2hvICdabWxzWldKbFlYUXVhVzV3ZFhSek9nb3RJSFI1Y0dVNklHRjNjeTF6TXdvZ0lHVnVZV0pzWldRNklIUnlkV1VLSUNCeGRXVjFaVjkxY213NklHaDBkSEJ6T2k4dmMzRnpMblZ6TFdWaGMzUXRNUzVoYldGNmIyNWhkM011WTI5dEx6eHpiMjFsWVdOamIzVnVkR2xrUGk5c2IyZHpkR0Z6YUMxc2IyZHpDaUFnWlhod1lXNWtYMlYyWlc1MGJHbHpkRjltY205dFgyWnBaV3hrT2lCU1pXTnZjbVJ6Q2dwc2IyZG5hVzVuTG14bGRtVnNPaUJwYm1adkNteHZaMmRwYm1jdWRHOWZabWxzWlhNNklIUnlkV1VLYkc5bloybHVaeTVtYVd4bGN6b0tJQ0J3WVhSb09pQXZkbUZ5TDJ4dlp5OW1hV3hsWW1WaGRBb2dJRzVoYldVNklHWnBiR1ZpWldGMENpQWdhMlZsY0dacGJHVnpPaUEzQ2lBZ2NHVnliV2x6YzJsdmJuTTZJREEyTkRRS2IzVjBjSFYwTG1acGJHVTZDaUFnY0dGMGFEb2dJaTkwYlhBdlptbHNaV0psWVhRaUNpQWdabWxzWlc1aGJXVTZJQ0ptYVd4bFltVmhkQzF2ZFhSd2RYUXViRzluSWdvZ0lDTWdjbTkwWVhSbElHVjJaWEo1SURFd1J3b2dJSEp2ZEdGMFpWOWxkbVZ5ZVY5cllqb2dNVEF3TURBd01EQUtJQ0J1ZFcxaVpYSmZiMlpmWm1sc1pYTTZJRE1LSUNCd1pYSnRhWE56YVc5dWN6b2dNRFkwTkFvPScgPiAvdG1wL2ZpbGViZWF0LnltbC5iNjQKYmFzZTY0IC1kIDwgL3RtcC9maWxlYmVhdC55bWwuYjY0ID4gL3RtcC9maWxlYmVhdC55bWwKY3VybCAtcyBodHRwOi8vMTY5LjI1NC4xNjkuMjU0L2xhdGVzdC9keW5hbWljL2luc3RhbmNlLWlkZW50aXR5L2RvY3VtZW50IHwganEgLXIgLmFjY291bnRJZCB8IHhhcmdzIC1pIHNlZCAtaSAicy88c29tZWFjY291bnRpZD4ve30vZyIgL3RtcC9maWxlYmVhdC55bWwKCgojIyMjIE9QVElPTkFMOiBhZGQgYW4gc3NoIGtleSBpZiB0aGUgbmV0IHlvdSdyZSBvbiBhbGxvd3MgYXJiaXRyYXJ5IHNzaCBvdXRib3VuZDsgc2tpcHMgc2V0dXAgaW4gYXdzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9ob21lL2VjMi11c2VyLy5zc2gvYXV0aG9yaXplZF9rZXlzCiNlY2hvICdzc2gtcnNhIFNPTUVQVUJLRVlIRVJFIGVsbGlvdEBldmlsY29ycC5sYW4nID4+IC9yb290Ly5zc2gvYXV0aG9yaXplZF9rZXlzCgoKIyMjIyB3YXRjaGNvdW50LnNoIHNjcmlwdCBmb3IgZ3JlcHBpbmcgZmlsZXMKZWNobyAnSXlFdlltbHVMMkpoYzJnS0l5QlZVMEZIUlRvZ1oybDJaVzRnWVNCclpYbDNiM0prTENCbmNtVndJSFJoY21kbGRDQndZWFIwWlhKdUlHWnZjaUJyWlhsM2IzSmtDa3RGV1ZkUFVrUTlKREVLZDJocGJHVWdkSEoxWlNBN0lHUnZJR2R5WlhBZ0pFdEZXVmRQVWtRZ0wzUnRjQzltYVd4bFltVmhkQzhxSUh3Z2QyTWdMV3dnSmlZZ2MyeGxaWEFnTVNBN0lHUnZibVVLJyA+IC90bXAvd2F0Y2hjb3VudC5zaC5iNjQKYmFzZTY0IC1kIDwgL3RtcC93YXRjaGNvdW50LnNoLmI2NCA+IC90bXAvd2F0Y2hjb3VudC5zaApzdWRvIGNwIC90bXAvZmlsZWJlYXQueW1sIC9ldGMvZmlsZWJlYXQvZmlsZWJlYXQueW1sCnN1ZG8gbWtkaXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNob3duIHJvb3Q6ZWMyLXVzZXIgL3RtcC9maWxlYmVhdCAmJiBzdWRvIGNobW9kIG8rcnggL3RtcC9maWxlYmVhdAo=
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: 0
+      #KeyName: 'devkeypair'
+      # tagging with Name automatically names the ec2 instance.
+      Tags:
+        - Key: 'Name'
+          Value: '20210503-filebeat-consumer3'
+  IAMROLE001:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+  IAMROLE002:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+  POLICY002:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'AllowCloudwatchReadWrite'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action:
+              - 'cloudwatch:GetMetricData'
+              - 'cloudwatch:PutMetricData'
+            #Resource: 'arn:aws:logs:us-east-1:*:*:*'
+            # need to figure out how to make this specific
+            # doc examples only show wildcards for resource.
+            Resource: '*'
+      Roles:
+        - Ref: 'IAMROLE001'
+        - Ref: 'IAMROLE002'
+  # admin s3
+  POLICY001:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'EC2AdminToS3'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action: 's3:*'
+            Resource: 'arn:aws:s3:::*'
+      Roles:
+        - Ref: 'IAMROLE001'
+        - Ref: 'IAMROLE002'
+  # admin s2s
+  POLICY003:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'EC2AdminToSqs'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action: '*'
+            Resource: 'arn:aws:sqs:us-east-1:*:*'
+      Roles:
+        - Ref: 'IAMROLE002'
+  INSTANCEPROFILE002:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: 'IAMROLE002'
+  INSTANCEPROFILE001:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: 'IAMROLE001'
+Outputs:
+  Ec2ProducerPublicIp:
+    Description: 'pub ip of the producer ec2 instance'
+    Value: !GetAtt EC2PRODUCER001.PublicIp
+  Ec2Consumer1PublicIp:
+    Description: 'pub ip of the consumer ec2 instance'
+    Value: !GetAtt EC2CONSUMER001.PublicIp
+  Ec2Consumer2PublicIp:
+    Description: 'pub ip of the consumer ec2 instance'
+    Value: !GetAtt EC2CONSUMER002.PublicIp
+  Ec2Consumer3PublicIp:
+    Description: 'pub ip of the consumer ec2 instance'
+    Value: !GetAtt EC2CONSUMER003.PublicIp
+  SqsQueArn:
+    Description: 'the arn of the sqs que'
+    Value: !GetAtt SQSQUEUE001.Arn
+Parameters:
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::IMAGE::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
