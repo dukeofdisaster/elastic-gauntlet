@@ -1,24 +1,7 @@
 # USAGE
-#	- The name of the game here is to check the behavior of multiple filebeat consumers 
-#	reading messages from an s3 bucket integrated with SQS
-#	- Expected behavior: 
-#		- all messages delivered at-least-once
-#		- no duplicates
-#	- How to measure: 
-#		- ship 10K logs.
-#		- start both filebeat consumers
-#		- for i in 10K do grep DUDEMESSAGE$i $FILEBEAT_OUTPUT_FILE
-#
-# NOTE:
-#   - Creation order matters: had issues with unresolvable dependencies
-#   Create Queue, then Policy, then Bucket by using DependdsOn attributes
-# TODO:
-#	- add a keypair here so we don't have to create one manually each time: done: add pubkey to userdata
-#	- add an ansible playbook that ensures everything is running as expected
-#	- add an ansible playbook that will generate logs given a keyword
-#	- add an ansible playbook that will pull the line count metrics.
-#	- add a vpc config ensuring source IP is whitelist
-#   - whitelist dev public ip
+#   - Deploy Elastic 8.X via repo for practice with ELK and Fleet
+#   - This template was reused from existing use case where SQS+S3 log ingestion patterns were used with filebeat.
+#     As such the polices/instance profiles/S3 configuration was left in place. 
 Resources:
   # A bucket for the logstash producer to send logs to
   S3STORAGE001:
