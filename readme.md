@@ -32,23 +32,22 @@ Contains various log samples that can be used for practice. Where possible these
 
 Problem logs have naming convention ```problem-<problem_description>.log```
 
-## /src
+## /src - WIP
 Contains various scripts that can be used for simulating ```live ``` log setup in the env
 
-1. gen-palo-batch.sh
-1. gen-cleoy.py
+1. gen-cleo.py
     1. RUN: ```./gen-cleo.py log-samples/problem-cleeo-xml-file.xml hello.xml```
     1. CRON:   ```*/1 * * * * /opt/elastic-gauntlet/src/gen-cleo.py log-samples/problem-cleeo-xml-file.xml /var/log/somepath/`date +%s`.xml```
 
 
-## /auto-deploy
-Contains cloud deployment templates that can have variables modified to meet a given need. For example of OPERATOR_SOURCE_IP white listed for inbound traffic.
+## aws/cloudformation
+Contains cloudformation templates for both 7.17 and 8.6 stack
 
-Special emphasis was placed on making these templates allow shell access over the web in $PICK_YOUR_CLOUD_PROVIDER_HERE because most large orgs should not be allowing arbitrary SSH traffic outbound. On some providers this is easier to achieve than others (for example, GCP's shell access to a linux box is straight forward and requires no boilerplate config / othe services)
+## gcp/ 
+GCP directory has no GCP templates for the following reasons 
 
-1. GCP
-    1. GCP deployments are excluded because the marketplace has a good pre-canned image which requires minimal setup to get to a state that's ready for BAU practice on v 7.17. 
-    1. GCP deployment was also a bit weirder than other providers in that it wasn't readily clear if you could just upload a template (like cloudformation or azure) or if you were dependent
+1. GCP deployments are excluded because the marketplace has a good pre-canned image which requires minimal setup to get to a state that's ready for BAU practice on v 7.17. 
+1. GCP deployment was also a bit weirder than other providers in that it wasn't readily clear if you could just upload a template (like cloudformation or azure) or if you were dependent
 
 ## /dev-tools
 Contains various dev tools commands that should be straightforward to execute via copy/paste.
@@ -71,7 +70,7 @@ Contains various dev tools commands that should be straightforward to execute vi
 11. Use the time reported in your original event as the authoritative ```@timestamp``` ; in the best case this is readily parsed ISO8601 UTC timestamp; 
 12. Use time meta as an indicator of issues in your pipeline; taking the diff of the reported log time and different times the event is touched in your pipeline can give useful metrics / indicators of health. For example, syslog messages coming hot off the wire should be relatively low lag (seconds), but if you see a spike in the diff this could indicate issues.
 
-**OBJECTIVES**
+**OBJECTIVES-WIP WIP WIP WIP **
 1. Deploy a filebeat agent to collect the following logs and ship them directly to elasticsearch. Use ingest pipelines at will. Index name filebeat-test-blahblahblah
     1. Did any problems arise? 
     1. How can you resolve these problems? 
