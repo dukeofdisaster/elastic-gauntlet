@@ -1,0 +1,20 @@
+filebeat.inputs:
+- type: aws-s3
+  enabled: true
+  queue_url: https://sqs.us-east-1.amazonaws.com/<someaccountid>/logstash-logs
+  expand_eventlist_from_field: Records
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+output.file:
+  path: "/tmp/filebeat"
+  filename: "filebeat-output.log"
+  # rotate every 10G
+  rotate_every_kb: 10000000
+  number_of_files: 3
+  permissions: 0644
